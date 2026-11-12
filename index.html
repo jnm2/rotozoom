@@ -10,7 +10,7 @@ label{white-space:nowrap}
 </style></head><body>
 <canvas id="c" width="320" height="200"></canvas>
 <div id="ui">
-<label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1" selected>ROTOZOOM (jnm2 mod)</option><option value="2">Mandala</option></select></label>
+<label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
 <label>Palette <select id="pal">
  <option value="14">default (SCREEN 13)</option>
  <option value="0">gray</option>
@@ -144,6 +144,8 @@ $('pre').onchange=()=>{const p=PRESETS[$('pre').value];if(!p)return;
 for(const k of['pal','ax','ss','res','fps','zm','ex','ap'])$(k).addEventListener('input',()=>$('pre').value='');
 const KEYS=['pre','pal','ax','ss','res','fps','zm','ap'],SK='rotozoom-settings';
 const save=()=>{const s={ex:$('ex').checked};for(const k of KEYS)s[k]=$(k).value;localStorage.setItem(SK,JSON.stringify(s));};
-try{const s=JSON.parse(localStorage.getItem(SK));if(s){if(typeof s.ap=='boolean')s.ap=s.ap?'1':'0';for(const k of KEYS)if(k in s)$(k).value=s[k];$('ex').checked=!!s.ex;rePal();}}catch{}
+let saved=null;try{saved=JSON.parse(localStorage.getItem(SK));}catch{}
+if(saved){const s=saved;if(typeof s.ap=='boolean')s.ap=s.ap?'1':'0';for(const k of KEYS)if(k in s)$(k).value=s[k];$('ex').checked=!!s.ex;rePal();}
+else{$('pre').value='2';$('pre').onchange();}
 for(const k of[...KEYS,'ex']){$(k).addEventListener('input',save);$(k).addEventListener('change',save);}
 </script></body></html>
