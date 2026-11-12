@@ -1,0 +1,149 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>XOR rotozoom</title>
+<style>
+body{background:#000;color:#aaa;font:13px system-ui,sans-serif;margin:0;display:flex;flex-direction:column;align-items:center}
+canvas{width:960px;height:600px;margin-top:8px}
+#ui{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 24px;margin:8px;max-width:960px}
+label{white-space:nowrap}
+#ui{user-select:none}
+#zmv,#apv{display:inline-block;width:5ch}
+</style></head><body>
+<canvas id="c" width="320" height="200"></canvas>
+<div id="ui">
+<label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1" selected>ROTOZOOM (jnm2 mod)</option><option value="2">Mandala</option></select></label>
+<label>Palette <select id="pal">
+ <option value="14">default (SCREEN 13)</option>
+ <option value="0">gray</option>
+ <option value="1">black to red</option>
+ <option value="2">black to yellow</option>
+ <option value="3">black to cyan</option>
+ <option value="4">blue to red</option>
+ <option value="5">blue to yellow</option>
+ <option value="6" selected>red to black to green</option>
+ <option value="7">black, red, black, green, black</option>
+ <option value="8">red, green, blue, red</option>
+ <option value="9">black, red, black</option>
+ <option value="10">red, green, red</option>
+ <option value="11">red, black, green, black, red</option>
+ <option value="12">same + narrow blue at ends</option>
+ <option value="13">red, black, green + narrow blue at ends</option>
+</select></label>
+<input id="ct" type="hidden" value="0">
+<!-- colour detail slider removed; restore: id="cd", p in frame() -->
+<label>Operator <select id="ax"><option value="2">XOR</option><option value="a">AND</option><option value="o">OR</option><option value="3">XOR, 3 axes</option><option value="4">XOR, 4 axes</option><option value="5">XOR, 5 axes</option><option value="6">XOR, 6 axes</option><option value="7">XOR, 7 axes</option><option value="8">XOR, 8 axes</option></select></label>
+<label>Antialiasing <select id="ss"><option value="1" selected>off</option><option value="4">4x</option><option value="8">8x</option><option value="16">16x</option></select></label>
+<label>Resolution <select id="res"><option value="n">native</option><option value="q" selected>320x200</option></select></label>
+<label><input id="ex" type="checkbox"> Original integer math</label>
+<label>Adaptive palette <input id="ap" type="range" min="0" max="1" step="0.1" value="0"> <span id="apv"></span></label>
+<button id="fs">Fullscreen</button>
+<label>Zoom <input id="zm" type="range" min="-3" max="3" step="0.05" value="0"> <span id="zmv"></span></label>
+<label>Speed <input id="fps" type="range" min="0" max="60" step="1" value="30"></label>
+</div>
+<canvas id="ps" width="256" height="1" style="display:none"></canvas><div id="qb" style="display:none;color:#8f8;font:13px monospace;margin-bottom:8px;white-space:pre;text-align:left"></div>
+<script>
+const c=document.getElementById('c'),gl=c.getContext('webgl2');let W,H;const fit=()=>{let cw=960,ch=600;if(document.fullscreenElement==c){cw=Math.min(innerWidth,innerHeight*1.6);ch=cw/1.6;}const lo=document.getElementById('res').value=='q';c.style.imageRendering=lo?'pixelated':'';const w=lo?320:Math.round(cw*devicePixelRatio),h=lo?200:Math.round(ch*devicePixelRatio);if(w==W&&h==H)return;W=c.width=w;H=c.height=h;gl.viewport(0,0,W,H);};
+// GPU version: each pixel's maths runs in a fragment shader; the palette is a 256x1 lookup texture.
+const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(o);return o;};
+const prog=gl.createProgram();
+gl.attachShader(prog,sh(gl.VERTEX_SHADER,`#version 300 es
+void main(){vec2 p=vec2(gl_VertexID&1,gl_VertexID>>1)*4.0-1.0;gl_Position=vec4(p,0,1);}`));
+gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,`#version 300 es
+precision highp float;precision highp int;
+uniform vec2 res,rot;uniform float zm,sc,kf;uniform int n,op,ss,fx;uniform vec2 ax[8];uniform sampler2D pal;out vec4 o;
+// Standard D3D/Vulkan MSAA sample positions, in 1/16 pixel from the pixel centre.
+const ivec2 S4[4]=ivec2[4](ivec2(-2,-6),ivec2(6,-2),ivec2(-6,2),ivec2(2,6));
+const ivec2 S8[8]=ivec2[8](ivec2(1,-3),ivec2(-1,3),ivec2(5,1),ivec2(-3,-5),ivec2(-5,5),ivec2(-7,-1),ivec2(3,7),ivec2(7,-7));
+const ivec2 S16[16]=ivec2[16](ivec2(1,1),ivec2(-1,-3),ivec2(-3,2),ivec2(4,-1),ivec2(-5,-2),ivec2(2,5),ivec2(5,3),ivec2(3,-5),ivec2(-2,6),ivec2(0,-7),ivec2(-4,-6),ivec2(-6,4),ivec2(-8,0),ivec2(7,-4),ivec2(6,7),ivec2(-7,-8));
+vec3 col(vec2 f){
+ // Same pixel grid as 320x200 with (0,0) at the centre, just sampled at native resolution.
+ float X=((f.x-0.5)*320.0/res.x-160.0)*zm, Y=((res.y-f.y-0.5)*200.0/res.y-100.0)*zm;
+ // Adaptive palette: kf (power of two) adds finer XOR bits without moving the coarse pattern; sc stretches the visible range over the palette.
+ int v;float fi;
+ if(fx>0){
+  // Exact 9-liner: integer pixel coords, integer CS/SS, then \ fx (truncates toward zero like QBasic).
+  // At 320x200, X and Y are already whole numbers; at native resolution they keep their fractions for finer detail.
+  int P=int(floor(X*rot.x-Y*rot.y)),Q=int(floor(Y*rot.x+X*rot.y));v=P;
+  for(int j=1;j<8;j++){if(j>=n)break;int p=int(floor(float(P)*ax[j].x+float(Q)*ax[j].y));v=op==0?v^p:op==1?v&p:v|p;}
+  float kk=min(kf,float(fx));v=int(float(v)*kk/float(fx));fi=float(v)*sc/kk;
+ }else{
+ float a=(X*rot.x-Y*rot.y)*kf, b=(Y*rot.x+X*rot.y)*kf;
+ v=int(floor(a));
+ for(int j=1;j<8;j++){if(j>=n)break;int p=int(floor(a*ax[j].x+b*ax[j].y));v=op==0?v^p:op==1?v&p:v|p;}
+ fi=float(v)*sc/kf;
+ }
+ float m=mod(fi,256.0);int i0=int(m)&255;
+ // Blend between neighbouring entries, but never across the 255->0 seam (that seam is a hard edge in the original too).
+ return mix(texelFetch(pal,ivec2(i0,0),0).rgb,texelFetch(pal,ivec2(min(i0+1,255),0),0).rgb,fract(m));}
+void main(){
+ if(ss<2){o=vec4(col(gl_FragCoord.xy),1);return;}
+ vec3 s=vec3(0);
+ for(int i=0;i<16;i++){if(i>=ss)break;ivec2 d=ss==4?S4[i]:ss==8?S8[i]:S16[i];s+=pow(col(gl_FragCoord.xy+vec2(d)/16.0),vec3(2.2));}
+ // Average in linear light so edges blend like real MSAA rather than darkening.
+ o=vec4(pow(s/float(ss),vec3(1.0/2.2)),1);}`));
+gl.linkProgram(prog);gl.useProgram(prog);
+const U=k=>gl.getUniformLocation(prog,k);
+const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+fit();
+const $=id=>document.getElementById(id);
+// Linear palettes as you'd write them in QBasic: PALETTE i, red + green * 256 + blue * 65536 (each 0..63).
+const PALS=[
+ {qb:'FOR i = 0 TO 255: PALETTE i, (i \\ 4) * 65793: NEXT',f:i=>[i>>2,i>>2,i>>2]},
+ {qb:'FOR i = 0 TO 255: PALETTE i, i \\ 4: NEXT',f:i=>[i>>2,0,0]},
+ {qb:'FOR i = 0 TO 255: PALETTE i, (i \\ 4) * 257: NEXT',f:i=>[i>>2,i>>2,0]},
+ {qb:'FOR i = 0 TO 255: PALETTE i, (i \\ 4) * 65792: NEXT',f:i=>[0,i>>2,i>>2]},
+ {qb:'FOR i = 0 TO 255: PALETTE i, i \\ 4 + (63 - i \\ 4) * 65536: NEXT',f:i=>[i>>2,0,63-(i>>2)]},
+ {qb:'FOR i = 0 TO 255: PALETTE i, (i \\ 4) * 257 + (63 - i \\ 4) * 65536: NEXT',f:i=>[i>>2,i>>2,63-(i>>2)]},
+ {qb:'FOR i = 0 TO 127: PALETTE i, 63 - i \\ 2: PALETTE i + 128, (i \\ 2) * 256: NEXT',f:i=>i<128?[63-(i>>1),0,0]:[0,(i-128)>>1,0]},
+ {qb:'FOR i = 0 TO 63: PALETTE i, i: PALETTE i + 64, 63 - i: PALETTE i + 128, i * 256: PALETTE i + 192, (63 - i) * 256: NEXT',f:i=>{const j=i&63,s=i>>6,v=s&1?63-j:j;return s<2?[v,0,0]:[0,v,0];}},
+ {qb:'FOR i = 0 TO 84: a = i * 63 \\ 84\n  PALETTE i, 63 - a + a * 256&: PALETTE i + 85, (63 - a) * 256& + a * 65536: PALETTE i + 170, (63 - a) * 65536 + a\nNEXT: PALETTE 255, 63',f:i=>{if(i>254)return[63,0,0];const j=i%85,a=(j*63/84)|0,s=(i/85)|0;return s==0?[63-a,a,0]:s==1?[0,63-a,a]:[a,0,63-a];}},
+{qb:'FOR i = 0 TO 127: PALETTE i, i \\ 2: PALETTE 255 - i, i \\ 2: NEXT',f:i=>[(i<128?i:255-i)>>1,0,0]},
+{qb:'FOR i = 0 TO 127: c = 63 - i \\ 2 + (i \\ 2) * 256&: PALETTE i, c: PALETTE 255 - i, c: NEXT',f:i=>{const a=(i<128?i:255-i)>>1;return[63-a,a,0];}},
+{qb:'FOR i = 0 TO 63: PALETTE i, 63 - i: PALETTE i + 64, i * 256: PALETTE i + 128, (63 - i) * 256: PALETTE i + 192, i: NEXT',f:i=>{const j=i&63,s=i>>6,v=(s==0||s==2)?63-j:j;return(s==0||s==3)?[v,0,0]:[0,v,0];}},
+{qb:'FOR i = 0 TO 63: PALETTE i, 63 - i: PALETTE i + 64, i * 256: PALETTE i + 128, (63 - i) * 256: PALETTE i + 192, i: NEXT\nFOR i = 0 TO 7: c = 21 + i * 5 + (21 - i * 3) * 256 + (63 - i * 9) * 65536: PALETTE i, c: PALETTE 255 - i, c: NEXT',f:i=>{const e=Math.min(i,255-i);if(e<8)return[21+e*5,21-e*3,63-e*9];const j=i&63,s=i>>6,v=(s==0||s==2)?63-j:j;return(s==0||s==3)?[v,0,0]:[0,v,0];}},
+{qb:'FOR i = 0 TO 127: PALETTE i, 63 - i \\ 2: PALETTE i + 128, (i \\ 2) * 256: NEXT\nFOR i = 0 TO 7: b = (63 - i * 9) * 65536\n  PALETTE i, 21 + i * 5 + (21 - i * 3) * 256 + b: PALETTE 255 - i, 21 - i * 3 + (21 + i * 5) * 256 + b\nNEXT',f:i=>{if(i<8)return[21+i*5,21-i*3,63-i*9];if(i>247){const e=255-i;return[21-e*3,21+e*5,63-e*9];}return i<128?[63-(i>>1),0,0]:[0,(i-128)>>1,0];}},
+// SCREEN 13 default palette, dumped from QB64 _PALETTECOLOR (standard VGA BIOS table).
+{qb:'',rgb:[0,0,0,0,0,170,0,170,0,0,170,170,170,0,0,170,0,170,170,85,0,170,170,170,85,85,85,85,85,255,85,255,85,85,255,255,255,85,85,255,85,255,255,255,85,255,255,255,0,0,0,20,20,20,32,32,32,45,45,45,57,57,57,69,69,69,81,81,81,97,97,97,113,113,113,130,130,130,146,146,146,162,162,162,182,182,182,202,202,202,227,227,227,255,255,255,0,0,255,65,0,255,125,0,255,190,0,255,255,0,255,255,0,190,255,0,125,255,0,65,255,0,0,255,65,0,255,125,0,255,190,0,255,255,0,190,255,0,125,255,0,65,255,0,0,255,0,0,255,65,0,255,125,0,255,190,0,255,255,0,190,255,0,125,255,0,65,255,125,125,255,158,125,255,190,125,255,223,125,255,255,125,255,255,125,223,255,125,190,255,125,158,255,125,125,255,158,125,255,190,125,255,223,125,255,255,125,223,255,125,190,255,125,158,255,125,125,255,125,125,255,158,125,255,190,125,255,223,125,255,255,125,223,255,125,190,255,125,158,255,182,182,255,198,182,255,219,182,255,235,182,255,255,182,255,255,182,235,255,182,219,255,182,198,255,182,182,255,198,182,255,219,182,255,235,182,255,255,182,235,255,182,219,255,182,198,255,182,182,255,182,182,255,198,182,255,219,182,255,235,182,255,255,182,235,255,182,219,255,182,198,255,0,0,113,28,0,113,57,0,113,85,0,113,113,0,113,113,0,85,113,0,57,113,0,28,113,0,0,113,28,0,113,57,0,113,85,0,113,113,0,85,113,0,57,113,0,28,113,0,0,113,0,0,113,28,0,113,57,0,113,85,0,113,113,0,85,113,0,57,113,0,28,113,57,57,113,69,57,113,85,57,113,97,57,113,113,57,113,113,57,97,113,57,85,113,57,69,113,57,57,113,69,57,113,85,57,113,97,57,113,113,57,97,113,57,85,113,57,69,113,57,57,113,57,57,113,69,57,113,85,57,113,97,57,113,113,57,97,113,57,85,113,57,69,113,81,81,113,89,81,113,97,81,113,105,81,113,113,81,113,113,81,105,113,81,97,113,81,89,113,81,81,113,89,81,113,97,81,113,105,81,113,113,81,105,113,81,97,113,81,89,113,81,81,113,81,81,113,89,81,113,97,81,113,105,81,113,113,81,105,113,81,97,113,81,89,113,0,0,65,16,0,65,32,0,65,49,0,65,65,0,65,65,0,49,65,0,32,65,0,16,65,0,0,65,16,0,65,32,0,65,49,0,65,65,0,49,65,0,32,65,0,16,65,0,0,65,0,0,65,16,0,65,32,0,65,49,0,65,65,0,49,65,0,32,65,0,16,65,32,32,65,40,32,65,49,32,65,57,32,65,65,32,65,65,32,57,65,32,49,65,32,40,65,32,32,65,40,32,65,49,32,65,57,32,65,65,32,57,65,32,49,65,32,40,65,32,32,65,32,32,65,40,32,65,49,32,65,57,32,65,65,32,57,65,32,49,65,32,40,65,45,45,65,49,45,65,53,45,65,61,45,65,65,45,65,65,45,61,65,45,53,65,45,49,65,45,45,65,49,45,65,53,45,65,61,45,65,65,45,61,65,45,53,65,45,49,65,45,45,65,45,45,65,49,45,65,53,45,65,61,45,65,65,45,61,65,45,53,65,45,49,65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}];
+const qbCode=k=>PALS[k].qb;
+function mkPal(k,C){const p=new Uint32Array(256);for(let i=0;i<256;i++){let t=i/256*Math.PI*2;
+ const R=PALS[k].rgb,v=R?[R[3*i],R[3*i+1],R[3*i+2]]:PALS[k].f(i).map(x=>x*255/63);let r=v[0],gg=v[1],b=v[2];
+ // Brightness wave (3 cycles per palette, independent of hue) for light/dark contrast.
+ const L=1+C*Math.sin(t*3), cl=v=>Math.max(0,Math.min(255,v*L))|0; r=cl(r);gg=cl(gg);b=cl(b);
+ p[i]=0xff000000|b<<16|gg<<8|r;}return p;}
+let pal;const ps=$('ps').getContext('2d'),psi=ps.createImageData(256,1);
+const rePal=()=>{pal=mkPal(+$('pal').value,+$('ct').value);
+ new Uint32Array(psi.data.buffer).set(pal);ps.putImageData(psi,0,0);$('qb').textContent=qbCode(+$('pal').value);};
+$('pal').onchange=rePal;$('ct').oninput=rePal;rePal();
+// Angle is integrated so changing the speed doesn't jump the animation.
+let ang=0,last=performance.now(),upl=null;
+function frame(now){fit();const fps=+$('fps').value;
+ const zm=2**+$('zm').value;$('apv').textContent=+$('ap').value?Math.round($('ap').value*100)+'%':'off';$('zmv').textContent=(zm<1?zm.toFixed(2):zm.toFixed(1))+'x';
+ ang+=(now-last)/1000*fps*0.08; last=now;
+ if(upl!==pal){gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(pal.buffer));upl=pal;}
+ // Antoni Gual's 9-liner math (ANG += .08 per original frame; spin and zoom share ANG). Zoom z=|sin(ang)|, 16-bit fixed point.
+ // (v AND/OR/XOR w) \ 65536 equals the same op on each value \ 65536, so the shader works in units of 65536 and stays in float range.
+ const ex=$('ex').checked, z=Math.max(Math.abs(Math.sin(ang)),1e-4), F=65536;
+ // QBasic assigns SINGLE to LONG with round-half-even.
+ const cint=x=>{const r=Math.round(x);return Math.abs(x%1)===0.5?2*Math.round(x/2):r;};
+ const CS=ex?cint(Math.cos(ang)*Math.abs(Math.sin(ang))*128):Math.trunc(Math.cos(ang)*z*F)/F, SS=ex?cint(Math.sin(ang)*Math.abs(Math.sin(ang))*128):Math.trunc(Math.sin(ang)*z*F)/F;
+ const ov=$('ax').value,op=ov=='a'?1:ov=='o'?2:0,n=op?2:+ov,st=(n&1?2:1)*Math.PI/n,AX=new Float32Array(16);
+ for(let j=0;j<n;j++){AX[2*j]=Math.round(Math.cos(j*st)*1e6)/1e6;AX[2*j+1]=Math.round(Math.sin(j*st)*1e6)/1e6;}
+ gl.uniform2f(U('res'),W,H);gl.uniform2f(U('rot'),CS,SS);gl.uniform1i(U('n'),n);gl.uniform1i(U('op'),op);gl.uniform1i(U('ss'),+$('ss').value);gl.uniform1i(U('fx'),ex?128:0);gl.uniform1f(U('zm'),zm);
+ // Visible coordinate radius is about |(160,100)|*zm*z; when that's small, stretch it to span half the palette.
+ // The slider scales (in log terms) both the colour stretch and how many finer XOR levels are added.
+ const ap=+$('ap').value,s0=Math.max(1,128/(188.7*zm*z)),sc=s0**ap,kf=2**Math.max(0,Math.round(Math.log2(sc)+ap));gl.uniform1f(U('sc'),sc);gl.uniform1f(U('kf'),kf);gl.uniform2fv(U('ax'),AX);gl.uniform1i(U('pal'),0);
+ gl.drawArrays(gl.TRIANGLES,0,3);requestAnimationFrame(frame);}
+requestAnimationFrame(frame);
+const goFs=()=>document.fullscreenElement?document.exitFullscreen():c.requestFullscreen();document.getElementById('fs').onclick=goFs;c.ondblclick=goFs;
+const PRESETS=[
+ {pal:14,ax:'a',ss:1,res:'q',ex:true,fps:30,zm:0,ap:'0'},
+ {pal:6,ax:'2',ss:1,res:'q',ex:false,fps:30,zm:0,ap:'0'},
+ {pal:6,ax:'7',ss:16,res:'n',ex:false,fps:12,zm:1,ap:'0.5'}];
+$('pre').onchange=()=>{const p=PRESETS[$('pre').value];if(!p)return;
+ for(const k of['pal','ax','ss','res','fps','zm'])$(k).value=p[k];$('ex').checked=p.ex;$('ap').value=p.ap;rePal();};
+for(const k of['pal','ax','ss','res','fps','zm','ex','ap'])$(k).addEventListener('input',()=>$('pre').value='');
+const KEYS=['pre','pal','ax','ss','res','fps','zm','ap'],SK='rotozoom-settings';
+const save=()=>{const s={ex:$('ex').checked};for(const k of KEYS)s[k]=$(k).value;localStorage.setItem(SK,JSON.stringify(s));};
+try{const s=JSON.parse(localStorage.getItem(SK));if(s){if(typeof s.ap=='boolean')s.ap=s.ap?'1':'0';for(const k of KEYS)if(k in s)$(k).value=s[k];$('ex').checked=!!s.ex;rePal();}}catch{}
+for(const k of[...KEYS,'ex']){$(k).addEventListener('input',save);$(k).addEventListener('change',save);}
+</script></body></html>
