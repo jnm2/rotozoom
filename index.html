@@ -5,7 +5,7 @@ body{background:#000;color:#aaa;font:14px system-ui,sans-serif;margin:0;display:
 canvas{width:min(960px,100vw);aspect-ratio:1.6;margin-top:8px}canvas:fullscreen{width:100vw;height:100vh;margin:0}
 #ui{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px 24px;margin:10px 110px 4px;max-width:1100px}
 #ui select,#ui button{font:inherit}#ui input{vertical-align:middle}
-#fs{position:fixed;top:10px;right:10px}
+#fs{position:fixed;top:10px;right:10px}#cz{display:none}
 label{white-space:nowrap}
 #ui{user-select:none}
 #zmv,#apv{display:inline-block;width:5ch}
@@ -16,10 +16,12 @@ label{white-space:nowrap}
  #ui select{flex:1;min-width:0;min-height:44px;font-size:18px}
  #ui input[type=range]{flex:1;min-width:0;height:32px}
  #ui input[type=checkbox]{width:28px;height:28px}
- #fs{position:static;min-height:48px;font-size:18px}
+ #fs,#cz{position:static;display:block;min-height:48px;font-size:18px}
+ #ui:not(.open) label{display:none}
 }
 </style></head><body>
 <div id="ui">
+<button id="cz" aria-expanded="false">Customize</button>
 <label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
 <label>Palette <select id="pal">
  <option value="14">default (SCREEN 13)</option>
@@ -52,7 +54,7 @@ label{white-space:nowrap}
 <canvas id="c" width="320" height="200"></canvas>
 <canvas id="ps" width="256" height="1" style="display:none"></canvas><div id="qb" style="display:none;color:#8f8;font:13px monospace;margin-bottom:8px;white-space:pre;text-align:left"></div>
 <script>
-const c=document.getElementById('c'),gl=c.getContext('webgl2');let W,H,LW=320;const fit=()=>{let cw=c.clientWidth,ch=c.clientHeight;LW=320;if(document.fullscreenElement==c){cw=innerWidth;ch=innerHeight;LW=2*Math.round(100*cw/ch);}const lo=document.getElementById('res').value=='q';c.style.imageRendering=lo?'pixelated':'';const w=lo?LW:Math.round(cw*devicePixelRatio),h=lo?200:Math.round(ch*devicePixelRatio);if(w==W&&h==H)return;W=c.width=w;H=c.height=h;gl.viewport(0,0,W,H);};
+const c=document.getElementById('c'),gl=c.getContext('webgl2');let W,H,LW=320,LH=200;const fit=()=>{let cw=c.clientWidth,ch=c.clientHeight;LW=320;LH=200;if(document.fullscreenElement==c){cw=innerWidth;ch=innerHeight;const a=cw/ch;if(a>=1.6)LW=2*Math.round(100*a);else LH=2*Math.round(160/a);}const lo=document.getElementById('res').value=='q';c.style.imageRendering=lo?'pixelated':'';const w=lo?LW:Math.round(cw*devicePixelRatio),h=lo?LH:Math.round(ch*devicePixelRatio);if(w==W&&h==H)return;W=c.width=w;H=c.height=h;gl.viewport(0,0,W,H);};
 // GPU version: each pixel's maths runs in a fragment shader; the palette is a 256x1 lookup texture.
 const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(o);return o;};
 const prog=gl.createProgram();
@@ -60,14 +62,14 @@ gl.attachShader(prog,sh(gl.VERTEX_SHADER,`#version 300 es
 void main(){vec2 p=vec2(gl_VertexID&1,gl_VertexID>>1)*4.0-1.0;gl_Position=vec4(p,0,1);}`));
 gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,`#version 300 es
 precision highp float;precision highp int;
-uniform vec2 res,rot;uniform float lw,zm,sc,kf;uniform int n,op,ss,fx;uniform vec2 ax[8];uniform sampler2D pal;out vec4 o;
+uniform vec2 res,rot;uniform float lw,lh,zm,sc,kf;uniform int n,op,ss,fx;uniform vec2 ax[8];uniform sampler2D pal;out vec4 o;
 // Standard D3D/Vulkan MSAA sample positions, in 1/16 pixel from the pixel centre.
 const ivec2 S4[4]=ivec2[4](ivec2(-2,-6),ivec2(6,-2),ivec2(-6,2),ivec2(2,6));
 const ivec2 S8[8]=ivec2[8](ivec2(1,-3),ivec2(-1,3),ivec2(5,1),ivec2(-3,-5),ivec2(-5,5),ivec2(-7,-1),ivec2(3,7),ivec2(7,-7));
 const ivec2 S16[16]=ivec2[16](ivec2(1,1),ivec2(-1,-3),ivec2(-3,2),ivec2(4,-1),ivec2(-5,-2),ivec2(2,5),ivec2(5,3),ivec2(3,-5),ivec2(-2,6),ivec2(0,-7),ivec2(-4,-6),ivec2(-6,4),ivec2(-8,0),ivec2(7,-4),ivec2(6,7),ivec2(-7,-8));
 vec3 col(vec2 f){
- // Same pixel grid as 320x200 (widened to lw columns in fullscreen) with (0,0) at the centre, just sampled at native resolution.
- float X=((f.x-0.5)*lw/res.x-lw*0.5)*zm, Y=((res.y-f.y-0.5)*200.0/res.y-100.0)*zm;
+ // Same pixel grid as 320x200 (extended to lw x lh in fullscreen so the original view is never cropped) with (0,0) at the centre, just sampled at native resolution.
+ float X=((f.x-0.5)*lw/res.x-lw*0.5)*zm, Y=((res.y-f.y-0.5)*lh/res.y-lh*0.5)*zm;
  // Adaptive palette: kf (power of two) adds finer XOR bits without moving the coarse pattern; sc stretches the visible range over the palette.
  int v;float fi;
  if(fx>0){
@@ -139,12 +141,13 @@ function frame(now){fit();const fps=+$('fps').value;
  const CS=ex?cint(Math.cos(ang)*Math.abs(Math.sin(ang))*128):Math.trunc(Math.cos(ang)*z*F)/F, SS=ex?cint(Math.sin(ang)*Math.abs(Math.sin(ang))*128):Math.trunc(Math.sin(ang)*z*F)/F;
  const ov=$('ax').value,op=ov=='a'?1:ov=='o'?2:0,n=op?2:+ov,st=(n&1?2:1)*Math.PI/n,AX=new Float32Array(16);
  for(let j=0;j<n;j++){AX[2*j]=Math.round(Math.cos(j*st)*1e6)/1e6;AX[2*j+1]=Math.round(Math.sin(j*st)*1e6)/1e6;}
- gl.uniform2f(U('res'),W,H);gl.uniform2f(U('rot'),CS,SS);gl.uniform1i(U('n'),n);gl.uniform1i(U('op'),op);gl.uniform1i(U('ss'),+$('ss').value);gl.uniform1i(U('fx'),ex?128:0);gl.uniform1f(U('zm'),zm);gl.uniform1f(U('lw'),LW);
- // Visible coordinate radius is about |(LW/2,100)|*zm*z; when that's small, stretch it to span half the palette.
+ gl.uniform2f(U('res'),W,H);gl.uniform2f(U('rot'),CS,SS);gl.uniform1i(U('n'),n);gl.uniform1i(U('op'),op);gl.uniform1i(U('ss'),+$('ss').value);gl.uniform1i(U('fx'),ex?128:0);gl.uniform1f(U('zm'),zm);gl.uniform1f(U('lw'),LW);gl.uniform1f(U('lh'),LH);
+ // Visible coordinate radius is about |(LW/2,LH/2)|*zm*z; when that's small, stretch it to span half the palette.
  // The slider scales (in log terms) both the colour stretch and how many finer XOR levels are added.
- const ap=+$('ap').value,s0=Math.max(1,128/(Math.hypot(LW/2,100)*zm*z)),sc=s0**ap,kf=2**Math.max(0,Math.round(Math.log2(sc)+ap));gl.uniform1f(U('sc'),sc);gl.uniform1f(U('kf'),kf);gl.uniform2fv(U('ax'),AX);gl.uniform1i(U('pal'),0);
+ const ap=+$('ap').value,s0=Math.max(1,128/(Math.hypot(LW/2,LH/2)*zm*z)),sc=s0**ap,kf=2**Math.max(0,Math.round(Math.log2(sc)+ap));gl.uniform1f(U('sc'),sc);gl.uniform1f(U('kf'),kf);gl.uniform2fv(U('ax'),AX);gl.uniform1i(U('pal'),0);
  gl.drawArrays(gl.TRIANGLES,0,3);requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
+$('cz').onclick=()=>$('cz').setAttribute('aria-expanded',$('ui').classList.toggle('open'));
 const goFs=()=>document.fullscreenElement?document.exitFullscreen():c.requestFullscreen();document.getElementById('fs').onclick=goFs;c.ondblclick=goFs;
 const PRESETS=[
  {pal:14,ax:'a',ss:1,res:'q',ex:true,fps:30,zm:0,ap:'0'},
