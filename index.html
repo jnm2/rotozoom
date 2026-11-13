@@ -17,12 +17,12 @@ label{white-space:nowrap}
  #ui input[type=range]{flex:1;min-width:0;height:32px}
  #ui input[type=checkbox]{width:28px;height:28px}
  #fs,#cz{position:static;display:block;min-height:48px;font-size:18px}
- #ui:not(.open) label{display:none}
+ #ui:not(.open) label:not(#prel){display:none}
 }
 </style></head><body>
 <div id="ui">
+<label id="prel">Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
 <button id="cz" aria-expanded="false">Customize</button>
-<label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
 <label>Palette <select id="pal">
  <option value="14">default (SCREEN 13)</option>
  <option value="0">gray</option>
