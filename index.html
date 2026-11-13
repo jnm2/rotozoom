@@ -1,14 +1,23 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>XOR rotozoom</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>XOR rotozoom</title>
 <style>
 body{background:#000;color:#aaa;font:14px system-ui,sans-serif;margin:0;display:flex;flex-direction:column;align-items:center}
-canvas{width:960px;height:600px;margin-top:8px}canvas:fullscreen{width:100vw;height:100vh;margin:0}
+canvas{width:min(960px,100vw);aspect-ratio:1.6;margin-top:8px}canvas:fullscreen{width:100vw;height:100vh;margin:0}
 #ui{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px 24px;margin:10px 110px 4px;max-width:1100px}
 #ui select,#ui button{font:inherit}#ui input{vertical-align:middle}
 #fs{position:fixed;top:10px;right:10px}
 label{white-space:nowrap}
 #ui{user-select:none}
 #zmv,#apv{display:inline-block;width:5ch}
+@media (pointer:coarse),(max-width:760px){
+ body{font-size:18px}
+ #ui{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin:12px 0;box-sizing:border-box;padding:0 12px;width:100%;max-width:520px}
+ #ui label{display:flex;align-items:center;gap:10px;white-space:normal}
+ #ui select{flex:1;min-width:0;min-height:44px;font-size:18px}
+ #ui input[type=range]{flex:1;min-width:0;height:32px}
+ #ui input[type=checkbox]{width:28px;height:28px}
+ #fs{position:static;min-height:48px;font-size:18px}
+}
 </style></head><body>
 <div id="ui">
 <label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
@@ -43,7 +52,7 @@ label{white-space:nowrap}
 <canvas id="c" width="320" height="200"></canvas>
 <canvas id="ps" width="256" height="1" style="display:none"></canvas><div id="qb" style="display:none;color:#8f8;font:13px monospace;margin-bottom:8px;white-space:pre;text-align:left"></div>
 <script>
-const c=document.getElementById('c'),gl=c.getContext('webgl2');let W,H,LW=320;const fit=()=>{let cw=960,ch=600;LW=320;if(document.fullscreenElement==c){cw=innerWidth;ch=innerHeight;LW=2*Math.round(100*cw/ch);}const lo=document.getElementById('res').value=='q';c.style.imageRendering=lo?'pixelated':'';const w=lo?LW:Math.round(cw*devicePixelRatio),h=lo?200:Math.round(ch*devicePixelRatio);if(w==W&&h==H)return;W=c.width=w;H=c.height=h;gl.viewport(0,0,W,H);};
+const c=document.getElementById('c'),gl=c.getContext('webgl2');let W,H,LW=320;const fit=()=>{let cw=c.clientWidth,ch=c.clientHeight;LW=320;if(document.fullscreenElement==c){cw=innerWidth;ch=innerHeight;LW=2*Math.round(100*cw/ch);}const lo=document.getElementById('res').value=='q';c.style.imageRendering=lo?'pixelated':'';const w=lo?LW:Math.round(cw*devicePixelRatio),h=lo?200:Math.round(ch*devicePixelRatio);if(w==W&&h==H)return;W=c.width=w;H=c.height=h;gl.viewport(0,0,W,H);};
 // GPU version: each pixel's maths runs in a fragment shader; the palette is a 256x1 lookup texture.
 const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(o);return o;};
 const prog=gl.createProgram();
