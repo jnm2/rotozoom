@@ -14,19 +14,18 @@ label{white-space:nowrap}
  body{font-size:18px}
  #ui{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:12px 0;box-sizing:border-box;padding:0 12px;width:100%;max-width:520px}
  #ui label{display:flex;align-items:center;gap:10px;white-space:normal;grid-column:1/-1}
- #prel{order:-2}#fs,#cz{order:-1}
+ #ui #prel,#ui #pall{order:-2;display:grid;grid-template-columns:4em minmax(0,1fr)}#fs,#cz{order:-1}
  #ui select{flex:1;min-width:0;min-height:44px;font-size:18px}
  #ui input[type=range]{flex:1;min-width:0;height:32px}
  #ui input[type=checkbox]{width:28px;height:28px}
  #fs,#cz{position:static;display:block;min-height:48px;font-size:18px}
- #ui:not(.open) label:not(#prel){display:none}
+ #ui:not(.open) label:not(#prel):not(#pall){display:none}
 }
 </style></head><body>
 <div id="ui">
 <label id="prel">Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
 <button id="cz" aria-expanded="false">Customize</button>
-<label>Palette <select id="pal">
- <option value="14">default (SCREEN 13)</option>
+<label id="pall">Palette <select id="pal">
  <option value="0">grayscale</option>
  <option value="6" selected>red to black to green</option>
  <option value="15">fire</option>
@@ -36,6 +35,7 @@ label{white-space:nowrap}
  <option value="19">magenta to black to cyan</option>
  <option value="20">blue to black to orange</option>
  <option value="21">pastel spectrum</option>
+ <option value="14">SCREEN 13</option>
 </select></label>
 <input id="ct" type="hidden" value="0">
 <!-- colour detail slider removed; restore: id="cd", p in frame() -->
