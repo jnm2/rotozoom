@@ -1,14 +1,15 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>XOR rotozoom</title>
 <style>
-body{background:#000;color:#aaa;font:13px system-ui,sans-serif;margin:0;display:flex;flex-direction:column;align-items:center}
+body{background:#000;color:#aaa;font:16px system-ui,sans-serif;margin:0;display:flex;flex-direction:column;align-items:center}
 canvas{width:960px;height:600px;margin-top:8px}canvas:fullscreen{width:100vw;height:100vh;margin:0}
-#ui{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 24px;margin:8px;max-width:960px}
+#ui{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px 28px;margin:12px 140px 4px;max-width:1100px}
+#ui select,#ui button{font:inherit;padding:4px 6px}#ui input[type=range]{width:140px;vertical-align:middle}#ui input[type=checkbox]{width:18px;height:18px;vertical-align:middle}
+#fs{position:fixed;top:12px;right:12px}
 label{white-space:nowrap}
 #ui{user-select:none}
 #zmv,#apv{display:inline-block;width:5ch}
 </style></head><body>
-<canvas id="c" width="320" height="200"></canvas>
 <div id="ui">
 <label>Preset <select id="pre"><option value="" hidden>custom</option><option value="0">ROTOZOOM.BAS</option><option value="1">ROTOZOOM (jnm2 mod)</option><option value="2" selected>Mandala</option></select></label>
 <label>Palette <select id="pal">
@@ -35,10 +36,11 @@ label{white-space:nowrap}
 <label>Resolution <select id="res"><option value="n">native</option><option value="q" selected>320x200</option></select></label>
 <label><input id="ex" type="checkbox"> Original integer math</label>
 <label>Adaptive palette <input id="ap" type="range" min="0" max="1" step="0.1" value="0"> <span id="apv"></span></label>
-<button id="fs">Fullscreen</button>
 <label>Zoom <input id="zm" type="range" min="-3" max="3" step="0.05" value="0"> <span id="zmv"></span></label>
-<label>Speed <input id="fps" type="range" min="0" max="60" step="1" value="30"></label>
+<label>Speed <input id="fps" type="range" min="0" max="60" step="0.1" value="30"></label>
+<button id="fs">Fullscreen</button>
 </div>
+<canvas id="c" width="320" height="200"></canvas>
 <canvas id="ps" width="256" height="1" style="display:none"></canvas><div id="qb" style="display:none;color:#8f8;font:13px monospace;margin-bottom:8px;white-space:pre;text-align:left"></div>
 <script>
 const c=document.getElementById('c'),gl=c.getContext('webgl2');let W,H,LW=320;const fit=()=>{let cw=960,ch=600;LW=320;if(document.fullscreenElement==c){cw=innerWidth;ch=innerHeight;LW=2*Math.round(100*cw/ch);}const lo=document.getElementById('res').value=='q';c.style.imageRendering=lo?'pixelated':'';const w=lo?LW:Math.round(cw*devicePixelRatio),h=lo?200:Math.round(ch*devicePixelRatio);if(w==W&&h==H)return;W=c.width=w;H=c.height=h;gl.viewport(0,0,W,H);};
@@ -138,7 +140,7 @@ const goFs=()=>document.fullscreenElement?document.exitFullscreen():c.requestFul
 const PRESETS=[
  {pal:14,ax:'a',ss:1,res:'q',ex:true,fps:30,zm:0,ap:'0'},
  {pal:6,ax:'2',ss:1,res:'q',ex:false,fps:30,zm:0,ap:'0'},
- {pal:6,ax:'7',ss:16,res:'n',ex:false,fps:12,zm:1,ap:'0.5'}];
+ {pal:6,ax:'7',ss:16,res:'n',ex:false,fps:3.6,zm:1,ap:'0.5'}];
 $('pre').onchange=()=>{const p=PRESETS[$('pre').value];if(!p)return;
  for(const k of['pal','ax','ss','res','fps','zm'])$(k).value=p[k];$('ex').checked=p.ex;$('ap').value=p.ap;rePal();};
 for(const k of['pal','ax','ss','res','fps','zm','ex','ap'])$(k).addEventListener('input',()=>$('pre').value='');
